@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>燃費・給油記録管理マネージャー Pro</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
     <style>
         :root {
             --bg-color: #f4f6f9;
@@ -44,6 +46,7 @@
             padding-bottom: 8px;
             margin-bottom: 8px;
             border-bottom: 1px solid #334155;
+            user-select: none;
         }
         .vehicle-switcher-container::-webkit-scrollbar { display: none; }
 
@@ -55,19 +58,20 @@
             font-size: 0.9rem;
             font-weight: bold;
             border-radius: 20px;
-            cursor: pointer;
+            cursor: grab;
             white-space: nowrap;
             display: flex;
             align-items: center;
             gap: 4px;
+            transition: transform 0.1s ease, background-color 0.2s;
         }
+        .switcher-btn:active { cursor: grabbing; }
+        .switcher-btn.dragging { opacity: 0.5; transform: scale(0.95); }
+        .switcher-btn.active { cursor: pointer; }
         .switcher-btn.active[data-theme="bike"] { background-color: var(--bike-color); color: white; }
         .switcher-btn.active[data-theme="car"] { background-color: var(--car-color); color: white; }
 
-        .tab-bar-top {
-            display: flex;
-            justify-content: space-around;
-        }
+        .tab-bar-top { display: flex; justify-content: space-around; }
         .tab-btn {
             flex: 1;
             background: none;
@@ -83,52 +87,21 @@
         body.theme-bike .tab-btn.active { color: #ffffff; border-bottom-color: var(--bike-color); }
         body.theme-car .tab-btn.active { color: #ffffff; border-bottom-color: var(--car-color); }
 
-        main {
-            max-width: 600px;
-            margin: 15px auto;
-            padding: 0 15px;
-        }
+        main { max-width: 600px; margin: 15px auto; padding: 0 15px; }
+        .card { background-color: var(--card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        .card.edit-mode-box { border: 3px solid #f59e0b; background-color: #fffbeb; }
 
-        .card {
-            background-color: var(--card-bg);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-            margin-bottom: 15px;
-        }
-
-        .card.edit-mode-box {
-            border: 3px solid #f59e0b;
-            background-color: #fffbeb;
-        }
-
-        h2 {
-            font-size: 1.05rem;
-            margin-bottom: 15px;
-            border-left: 4px solid #64748b;
-            padding-left: 8px;
-        }
+        h2 { font-size: 1.05rem; margin-bottom: 15px; border-left: 4px solid #64748b; padding-left: 8px; }
         body.theme-bike h2 { border-left-color: var(--bike-color); }
         body.theme-car h2 { border-left-color: var(--car-color); }
 
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-
         .form-group { margin-bottom: 12px; }
         label { display: block; margin-bottom: 4px; font-size: 0.85rem; font-weight: bold; }
         input, select { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 1rem; background: white; }
         
-        .calc-result-box {
-            background-color: #f8fafc;
-            border: 1px dashed #cbd5e1;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 5px;
-            font-weight: bold;
-            font-size: 0.95rem;
-            color: #475569;
-        }
-
+        .calc-result-box { background-color: #f8fafc; border: 1px dashed #cbd5e1; padding: 10px; border-radius: 6px; margin-top: 5px; font-weight: bold; font-size: 0.95rem; color: #475569; }
         button.btn-submit { width: 100%; padding: 12px; border: none; border-radius: 6px; color: white; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 10px; }
         body.theme-bike .btn-submit { background-color: var(--bike-color); }
         body.theme-car .btn-submit { background-color: var(--car-color); }
@@ -137,13 +110,10 @@
         .stat-box { background-color: #f8fafc; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color); }
         .stat-value { font-size: 1.3rem; font-weight: bold; margin-top: 4px; }
 
-        .graph-container { background: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid var(--border-color); }
-        .graph-bar-bg { background: #e2e8f0; height: 16px; border-radius: 8px; overflow: hidden; margin-top: 6px; }
-        .graph-bar-fill { height: 100%; width: 0%; transition: width 0.5s ease; }
-        body.theme-bike .graph-bar-fill { background-color: var(--bike-color); }
-        body.theme-car .graph-bar-fill { background-color: var(--car-color); }
+        .chart-box-container { margin-bottom: 5px; position: relative; width: 100%; height: 220px; background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); cursor: grab; }
+        .chart-box-container:active { cursor: grabbing; }
 
-        .history-list { max-height: 350px; overflow-y: auto; }
+        .history-list { max-height: 450px; overflow-y: auto; }
         .history-item { padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; gap: 10px; }
         .history-left-side { flex: 1; }
         .history-right-side { text-align: right; font-weight: bold; margin-right: 5px; }
@@ -167,7 +137,7 @@
         <nav class="tab-bar-top">
             <button id="btn-tab-input" class="tab-btn active" onclick="globalSwitchTab('tab-input')">✍️ 記録入力</button>
             <button id="btn-tab-dashboard" class="tab-btn" onclick="globalSwitchTab('tab-dashboard')">📊 燃費</button>
-            <button id="btn-tab-settings" class="tab-btn" onclick="globalSwitchTab('tab-settings')">⚙️ 車領設定</button>
+            <button id="btn-tab-settings" class="tab-btn" onclick="globalSwitchTab('tab-settings')">⚙️ 車両設定</button>
             <button id="btn-tab-data" class="tab-btn" onclick="globalSwitchTab('tab-data')">💾 データ管理</button>
         </nav>
     </header>
@@ -178,12 +148,12 @@
                 <h2 id="input-title">給油記録の入力</h2>
                 <form id="fuel-form" onsubmit="saveNewRecord(event)">
                     <div class="form-group">
-                        <label>給油日</label>
-                        <input type="date" id="date" onchange="calculateTotalCost('new')">
+                        <label>給油日・日時</label>
+                        <input type="datetime-local" id="date" step="1" onchange="calculateTotalCost('new')">
                     </div>
                     <div class="form-group">
                         <label>現在の総走行距離 (km)</label>
-                        <input type="number" id="odo" step="0.1" placeholder="例: 12500.5">
+                        <input type="number" id="odo" step="0.1" placeholder="前回の総走行距離: 算出中...">
                     </div>
                     <div class="form-group">
                         <label>給油量 (L)</label>
@@ -207,8 +177,8 @@
                     <input type="hidden" id="edit-timestamp-hidden">
                     
                     <div class="form-group">
-                        <label>給油日</label>
-                        <input type="date" id="edit-date" onchange="calculateTotalCost('edit')">
+                        <label>給油日・日時</label>
+                        <input type="datetime-local" id="edit-date" step="1" onchange="calculateTotalCost('edit')">
                     </div>
                     <div class="form-group">
                         <label>総走行距離 (km)</label>
@@ -232,20 +202,28 @@
                 <h2 id="dash-title">ダッシュボード</h2>
                 <div class="stats-grid">
                     <div class="stat-box">
-                        <label>平均燃費</label>
+                        <label id="avg-fuel-label">平均燃費 (表示期間)</label>
                         <div class="stat-value" id="avg-fuel">- <span style="font-size:0.8rem">km/L</span></div>
                     </div>
                     <div class="stat-box">
-                        <label>総走行距離</label>
+                        <label>現在の総走行距離</label>
                         <div class="stat-value" id="total-distance">- <span style="font-size:0.8rem">km</span></div>
                     </div>
                 </div>
-                <div class="graph-container">
-                    <label>燃費ステータス</label>
-                    <div class="graph-bar-bg">
-                        <div id="graph-bar" class="graph-bar-fill"></div>
+
+                <div class="form-group" style="margin-top: 10px;">
+                    <label>📈 燃費の推移 (km/L) <span style="font-size:0.75rem; font-weight:normal; color:#64748b;">※ドラッグやホイールで期間を自由移動</span></label>
+                    <div class="chart-box-container">
+                        <canvas id="efficiencyChart"></canvas>
                     </div>
                 </div>
+                <div class="form-group">
+                    <label>⛽ ガソリン単価の推移 (円/L)</label>
+                    <div class="chart-box-container">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+                <button class="btn-sm-secondary" style="width:100%; padding:6px; margin-top:5px; background:#e2e8f0; color:#475569;" onclick="resetChartZoom()">🔄 グラフの期間表示を初期位置に戻す</button>
             </div>
 
             <div class="card">
@@ -315,13 +293,19 @@
     <script>
         let currentVehicleId = 'bike'; 
         let currentVehicleTheme = 'bike';
+        
+        let efficiencyChartInstance = null;
+        let priceChartInstance = null;
+
+        // 計算で使い回すため、現在の車両の元データを保持する変数
+        let currentFilteredRecordsGlobal = [];
+        let currentBaseOdoGlobal = 0;
 
         let vehicles = JSON.parse(localStorage.getItem('vehicles_list')) || [
             { id: 'bike', name: 'バイク (初期)', type: 'bike', fuel: 'premium', baseOdo: 0 },
             { id: 'car', name: '自動車', type: 'car', fuel: 'regular', baseOdo: 0 }
         ];
 
-        // 🛠️ IDのズレを修正し、絶対にエラーで止まらないように書き換え
         window.globalSwitchTab = function(tabId) {
             const contents = ['tab-input', 'tab-dashboard', 'tab-settings', 'tab-data'];
             contents.forEach(id => {
@@ -337,6 +321,13 @@
             const targetBtn = document.getElementById('btn-' + tabId) || document.getElementById('btn-tab-' + tabId);
             if (targetBtn) targetBtn.classList.add('active');
 
+            if(tabId === 'tab-input') {
+                setDefaultDate();
+            }
+            if(tabId === 'tab-dashboard') {
+                setTimeout(refreshDisplay, 50);
+            }
+
             window.scrollTo({ top: 0 });
         };
 
@@ -348,12 +339,41 @@
             }
             renderVehicleButtons();
             refreshDisplay();
+            initDragAndDrop();
         };
 
         function setDefaultDate() {
             const dateInput = document.getElementById('date');
-            if(dateInput && !dateInput.value) {
-                dateInput.value = new Date().toISOString().split('T')[0];
+            if(dateInput) {
+                const now = new Date();
+                const yyyy = now.getFullYear();
+                const mm = String(now.getMonth() + 1).padStart(2, '0');
+                const dd = String(now.getDate()).padStart(2, '0');
+                const hh = String(now.getHours()).padStart(2, '0');
+                const min = String(now.getMinutes()).padStart(2, '0');
+                const ss = String(now.getSeconds()).padStart(2, '0');
+                dateInput.value = `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
+            }
+        }
+
+        function formatJapaneseDate(dateStr, short = false) {
+            if(!dateStr) return '日付未入力';
+            try {
+                const d = new Date(dateStr);
+                if(isNaN(d.getTime())) return dateStr;
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                const hh = String(d.getHours()).padStart(2, '0');
+                const min = String(d.getMinutes()).padStart(2, '0');
+                
+                if (short) {
+                    return `${m}/${day} ${hh}:${min}`;
+                }
+                const y = d.getFullYear();
+                const ss = String(d.getSeconds()).幻想的な秒 || String(d.getSeconds()).padStart(2, '0');
+                return `${y}年${m}月${day}日 ${hh}時${min}分${ss}秒`;
+            } catch(e) {
+                return dateStr;
             }
         }
 
@@ -377,10 +397,95 @@
             vehicles.forEach(v => {
                 const btn = document.createElement('button');
                 btn.className = `switcher-btn ${v.id === currentVehicleId ? 'active' : ''}`;
+                btn.setAttribute('draggable', 'true');
+                btn.setAttribute('data-id', v.id);
+                btn.setAttribute('data-theme', v.type);
                 btn.innerHTML = `${v.type === 'bike' ? '🏍️' : '🚗'} ${v.name}`;
-                btn.onclick = function() { switchVehicle(v.id); };
+                
+                btn.onclick = function(e) { 
+                    if(btn.classList.contains('dragging')) return;
+                    switchVehicle(v.id); 
+                };
                 area.appendChild(btn);
             });
+        }
+
+        function initDragAndDrop() {
+            const container = document.getElementById('vehicle-buttons-area');
+            
+            container.addEventListener('dragstart', (e) => {
+                if (e.target.classList.contains('switcher-btn')) {
+                    e.target.classList.add('dragging');
+                }
+            });
+
+            container.addEventListener('dragend', (e) => {
+                if (e.target.classList.contains('switcher-btn')) {
+                    e.target.classList.remove('dragging');
+                    saveVehicleOrder();
+                }
+            });
+
+            container.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const draggingItem = container.querySelector('.dragging');
+                if (!draggingItem) return;
+                
+                const siblings = [...container.querySelectorAll('.switcher-btn:not(.dragging)')];
+                const nextSibling = siblings.find(sibling => {
+                    const box = sibling.getBoundingClientRect();
+                    return e.clientX <= box.left + box.width / 2;
+                });
+                
+                container.insertBefore(draggingItem, nextSibling);
+            });
+
+            let touchItem = null;
+            container.addEventListener('touchstart', (e) => {
+                const btn = e.target.closest('.switcher-btn');
+                if (!btn) return;
+                touchItem = btn;
+                touchItem.classList.add('dragging');
+            }, { passive: true });
+
+            container.addEventListener('touchmove', (e) => {
+                if (!touchItem) return;
+                const touch = e.touches[0];
+                const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+                const sibling = targetEl ? targetEl.closest('.switcher-btn:not(.dragging)') : null;
+                
+                if (sibling && sibling.parentNode === container) {
+                    const box = sibling.getBoundingClientRect();
+                    if (touch.clientX <= box.left + box.width / 2) {
+                        container.insertBefore(touchItem, sibling);
+                    } else {
+                        container.insertBefore(touchItem, sibling.nextSibling);
+                    }
+                }
+            }, { passive: true });
+
+            container.addEventListener('touchend', () => {
+                if (touchItem) {
+                    touchItem.classList.remove('dragging');
+                    touchItem = null;
+                    saveVehicleOrder();
+                }
+            });
+        }
+
+        function saveVehicleOrder() {
+            const container = document.getElementById('vehicle-buttons-area');
+            const currentButtons = [...container.querySelectorAll('.switcher-btn')];
+            
+            const newOrderedVehicles = [];
+            currentButtons.forEach(btn => {
+                const id = btn.getAttribute('data-id');
+                const v = vehicles.find(item => item.id === id);
+                if (v) newOrderedVehicles.push(v);
+            });
+            
+            vehicles = newOrderedVehicles;
+            localStorage.setItem('vehicles_list', JSON.stringify(vehicles));
         }
 
         function switchVehicle(id) {
@@ -397,6 +502,7 @@
 
             closeInlineEdit();
             renderVehicleButtons();
+            setDefaultDate(); 
             refreshDisplay();
         }
 
@@ -514,14 +620,165 @@
             }
         }
 
+        window.resetChartZoom = function() {
+            if(efficiencyChartInstance) efficiencyChartInstance.resetZoom();
+            if(priceChartInstance) priceChartInstance.resetZoom();
+            // ズームリセット時は全期間の平均を再計算
+            recalculateVisibleAverageFuel();
+        };
+
+        // 💡 現在グラフの画面内に表示されている範囲（期間）だけを抽出して平均燃費を計算する関数
+        function recalculateVisibleAverageFuel() {
+            if (!efficiencyChartInstance || currentFilteredRecordsGlobal.length === 0) return;
+
+            // グラフの現在のX軸の表示最小インデックス・最大インデックスを取得
+            const minIndex = Math.max(0, Math.floor(efficiencyChartInstance.scales.x.min));
+            const maxIndex = Math.min(currentFilteredRecordsGlobal.length - 1, Math.ceil(efficiencyChartInstance.scales.x.max));
+
+            // 表示されている範囲のデータだけをスライス
+            const visibleRecords = currentFilteredRecordsGlobal.slice(minIndex, maxIndex + 1);
+            
+            // 区間内の給油量合計と走行距離の算出
+            const recordsWithFuel = visibleRecords.filter(r => r.odo && r.liters);
+
+            if (recordsWithFuel.length >= 1) {
+                // 表示されている期間の中で一番古いデータとその一つ前のODOを特定して正確な走行距離の差分を出す
+                const oldestInVisible = visibleRecords[0];
+                
+                // 全体配列の中で、現在見えている一番古いデータの一つ前のインデックスを探す
+                const globalIdx = currentFilteredRecordsGlobal.indexOf(oldestInVisible);
+                let prevOdo = currentBaseOdoGlobal;
+                for (let j = globalIdx - 1; j >= 0; j--) {
+                    if (currentFilteredRecordsGlobal[j].odo) {
+                        prevOdo = currentFilteredRecordsGlobal[j].odo;
+                        break;
+                    }
+                }
+
+                const latestOdo = visibleRecords[visibleRecords.length - 1].odo;
+                const visibleDiffKm = latestOdo - prevOdo;
+                const visibleTotalLiters = recordsWithFuel.reduce((sum, r) => sum + Number(r.liters), 0);
+
+                if (visibleTotalLiters > 0 && visibleDiffKm > 0) {
+                    const visibleAvg = (visibleDiffKm / visibleTotalLiters).toFixed(2);
+                    document.getElementById('avg-fuel').innerHTML = `${visibleAvg} <span style="font-size:0.8rem">km/L</span>`;
+                    return;
+                }
+            }
+            document.getElementById('avg-fuel').innerHTML = `- <span style="font-size:0.8rem">km/L</span>`;
+        }
+
+        // 📈 任意期間移動・拡大縮小（ズーム・パン）対応のグラフ描画関数
+        function updateCharts(labels, efficiencyData, priceData) {
+            const themeColor = currentVehicleTheme === 'bike' ? '#10b981' : '#3b82f6';
+
+            const zoomOptions = {
+                zoom: {
+                    wheel: { enabled: true },
+                    pinch: { enabled: true },
+                    mode: 'x',
+                    onZoomComplete: function() {
+                        // 🔍 ズームが終わったタイミングで数値を再計算
+                        recalculateVisibleAverageFuel();
+                    }
+                },
+                pan: {
+                    enabled: true,
+                    mode: 'x',
+                    onPan: function({chart}) {
+                        const otherChart = (chart === efficiencyChartInstance) ? priceChartInstance : efficiencyChartInstance;
+                        if(otherChart) {
+                            otherChart.options.scales.x.min = chart.scales.x.min;
+                            otherChart.options.scales.x.max = chart.scales.x.max;
+                            otherChart.update('none');
+                        }
+                    },
+                    onPanComplete: function() {
+                        // 🔍 ドラッグ移動が終わったタイミングで数値を再計算
+                        recalculateVisibleAverageFuel();
+                    },
+                    onZoom: function({chart}) {
+                        const otherChart = (chart === efficiencyChartInstance) ? priceChartInstance : efficiencyChartInstance;
+                        if(otherChart) {
+                            otherChart.options.scales.x.min = chart.scales.x.min;
+                            otherChart.options.scales.x.max = chart.scales.x.max;
+                            otherChart.update('none');
+                        }
+                    }
+                }
+            };
+
+            const ctxEff = document.getElementById('efficiencyChart');
+            if(ctxEff) {
+                if(efficiencyChartInstance) efficiencyChartInstance.destroy();
+                efficiencyChartInstance = new Chart(ctxEff, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '区間燃費 (km/L)',
+                            data: efficiencyData,
+                            borderColor: themeColor,
+                            backgroundColor: themeColor + '22',
+                            borderWidth: 3,
+                            tension: 0.2,
+                            fill: true,
+                            pointRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { zoom: zoomOptions },
+                        scales: { y: { beginAtZero: false } }
+                    }
+                });
+            }
+
+            const ctxPrice = document.getElementById('priceChart');
+            if(ctxPrice) {
+                if(priceChartInstance) priceChartInstance.destroy();
+                priceChartInstance = new Chart(ctxPrice, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'ガソリン単価 (円/L)',
+                            data: priceData,
+                            borderColor: '#f59e0b',
+                            backgroundColor: '#f59e0b22',
+                            borderWidth: 3,
+                            tension: 0.2,
+                            fill: true,
+                            pointRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { zoom: zoomOptions },
+                        scales: { y: { beginAtZero: false } }
+                    }
+                });
+            }
+        }
+
         function refreshDisplay() {
             const allRecords = JSON.parse(localStorage.getItem('fuel_records')) || [];
             const currentVehicle = vehicles.find(v => v.id === currentVehicleId);
             const baseOdo = currentVehicle ? currentVehicle.baseOdo : 0;
+            currentBaseOdoGlobal = baseOdo; // グローバル退避
 
             const filteredRecords = allRecords
                 .filter(r => r.vehicle === currentVehicleId)
-                .sort((a, b) => new Date(a.date) - new Date(b.date));
+                .sort((a, b) => {
+                    const dateA = new Date(a.date).getTime();
+                    const dateB = new Date(b.date).getTime();
+                    if (dateA !== dateB) return dateA - dateB;
+                    return (a.odo || 0) - (b.odo || 0);
+                });
+            
+            currentFilteredRecordsGlobal = filteredRecords; // グローバル退避
 
             document.getElementById('settings-current-vehicle').value = currentVehicle ? `${currentVehicle.type === 'bike'?'🏍️':'🚗'} ${currentVehicle.name}` : '未選択';
 
@@ -544,6 +801,17 @@
                 managerList.appendChild(item);
             });
 
+            let latestOdoForPlaceholder = baseOdo;
+            const odoRecords = filteredRecords.filter(r => r.odo);
+            if (odoRecords.length > 0) {
+                latestOdoForPlaceholder = odoRecords[odoRecords.length - 1].odo;
+            }
+            document.getElementById('odo').placeholder = `前回の総走行距離: ${latestOdoForPlaceholder}`;
+
+            let chartLabels = [];
+            let chartEfficiencies = [];
+            let chartPrices = [];
+
             for(let i = 0; i < filteredRecords.length; i++) {
                 let prevOdo = baseOdo;
                 for(let j = i - 1; j >= 0; j--) {
@@ -557,7 +825,13 @@
                 } else {
                     filteredRecords[i].calcEfficiency = null;
                 }
+
+                chartLabels.push(formatJapaneseDate(filteredRecords[i].date, true));
+                chartEfficiencies.push(filteredRecords[i].calcEfficiency ? parseFloat(filteredRecords[i].calcEfficiency) : null);
+                chartPrices.push(filteredRecords[i].unitPrice ? filteredRecords[i].unitPrice : null);
             }
+
+            updateCharts(chartLabels, chartEfficiencies, chartPrices);
 
             const displayRecords = [...filteredRecords].reverse();
             const container = document.getElementById('history-container');
@@ -567,7 +841,6 @@
                 container.innerHTML = '<p style="text-align:center; color:#94a3b8; padding:20px;">データがありません</p>';
                 document.getElementById('avg-fuel').innerHTML = `- <span style="font-size:0.8rem">km/L</span>`;
                 document.getElementById('total-distance').innerHTML = `- <span style="font-size:0.8rem">km</span>`;
-                document.getElementById('graph-bar').style.width = '0%';
                 return;
             }
 
@@ -581,7 +854,7 @@
                 
                 item.innerHTML = `
                     <div class="history-left-side">
-                        <span class="history-date">${rec.date || '日付未入力'}</span><br>
+                        <span class="history-date">${formatJapaneseDate(rec.date)}</span><br>
                         <span style="font-size:0.75rem; color:#64748b;">総距離: ${rec.odo || 0}km / 給油: ${rec.liters || 0}L</span>
                     </div>
                     <div class="history-right-side">
@@ -599,23 +872,8 @@
             const validOdoRecord = displayRecords.find(r => r.odo);
             document.getElementById('total-distance').innerHTML = `${validOdoRecord ? validOdoRecord.odo : '-'} <span style="font-size:0.8rem">km</span>`;
 
-            if(validOdoRecord && filteredRecords.filter(r => r.odo && r.liters).length >= 1) {
-                const latestOdo = validOdoRecord.odo;
-                const totalDiffKm = latestOdo - baseOdo;
-                const totalLiters = filteredRecords.filter(r => r.odo && r.liters).reduce((sum, r) => sum + Number(r.liters), 0);
-
-                if(totalLiters > 0 && totalDiffKm > 0) {
-                    const totalAvg = (totalDiffKm / totalLiters).toFixed(2);
-                    document.getElementById('avg-fuel').innerHTML = `${totalAvg} <span style="font-size:0.8rem">km/L</span>`;
-                    const maxBenchmark = currentVehicleTheme === 'bike' ? 60 : 20; 
-                    const graphPercent = Math.min((totalAvg / maxBenchmark) * 100, 100);
-                    document.getElementById('graph-bar').style.width = `${graphPercent}%`;
-                } else {
-                    document.getElementById('avg-fuel').innerHTML = `計算中...`;
-                }
-            } else {
-                document.getElementById('avg-fuel').innerHTML = `- <span style="font-size:0.8rem">km/L</span>`;
-            }
+            // 初期ロード時は全期間の表示範囲なので通常の初期計算を行う
+            recalculateVisibleAverageFuel();
         }
 
         function saveNewRecord(event) {
@@ -670,7 +928,7 @@
             allRecords.push({
                 timestamp: uniqueId, 
                 vehicle: currentVehicleId, 
-                date: date || new Date().toISOString().split('T')[0], 
+                date: date || new Date().toISOString(), 
                 odo: odo,
                 liters: liters,
                 unitPrice: unitPrice, 
@@ -682,7 +940,8 @@
             document.getElementById('odo').value = '';
             document.getElementById('liters').value = '';
             document.getElementById('unit-price').value = '';
-            setDefaultDate();
+            
+            setDefaultDate(); 
             calculateTotalCost('new');
 
             alert(`記録を保存しました！`);
