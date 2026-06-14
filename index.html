@@ -111,8 +111,8 @@
         body.theme-bike h2 { border-left-color: var(--bike-color); }
         body.theme-car h2 { border-left-color: var(--car-color); }
 
-        /* 初期表示はJavaScript側で制御するため一括設定 */
         .tab-content { display: none; }
+        .tab-content.active { display: block; }
 
         .form-group { margin-bottom: 12px; }
         label { display: block; margin-bottom: 4px; font-size: 0.85rem; font-weight: bold; }
@@ -167,13 +167,13 @@
         <nav class="tab-bar-top">
             <button id="btn-tab-input" class="tab-btn active" onclick="globalSwitchTab('tab-input')">✍️ 記録入力</button>
             <button id="btn-tab-dashboard" class="tab-btn" onclick="globalSwitchTab('tab-dashboard')">📊 燃費</button>
-            <button id="btn-tab-settings" class="tab-btn" onclick="globalSwitchTab('tab-settings')">⚙️ 車両設定</button>
+            <button id="btn-tab-settings" class="tab-btn" onclick="globalSwitchTab('tab-settings')">⚙️ 車領設定</button>
             <button id="btn-tab-data" class="tab-btn" onclick="globalSwitchTab('tab-data')">💾 データ管理</button>
         </nav>
     </header>
 
     <main>
-        <div id="tab-input" class="tab-content" style="display: block;">
+        <div id="tab-input" class="tab-content active">
             <div class="card">
                 <h2 id="input-title">給油記録の入力</h2>
                 <form id="fuel-form" onsubmit="saveNewRecord(event)">
@@ -200,10 +200,12 @@
         </div>
 
         <div id="tab-dashboard" class="tab-content">
+            
             <div class="card edit-mode-box" id="inline-edit-card" style="display: none;">
                 <h2 style="border-left-color: #f59e0b; color: #b45309;">🔧 選択した給油履歴の修正</h2>
                 <form id="inline-edit-form" onsubmit="saveEditedRecord(event)">
                     <input type="hidden" id="edit-timestamp-hidden">
+                    
                     <div class="form-group">
                         <label>給油日</label>
                         <input type="date" id="edit-date" onchange="calculateTotalCost('edit')">
@@ -267,6 +269,7 @@
                         <option value="diesel">軽油</option>
                     </select>
                 </div>
+                
                 <h3 style="font-size:0.9rem; margin:15px 0 5px 0;">登録されているすべての車両一覧</h3>
                 <div class="vehicle-manager-list" id="vehicle-list-manager"></div>
             </div>
@@ -318,19 +321,21 @@
             { id: 'car', name: '自動車', type: 'car', fuel: 'regular', baseOdo: 0 }
         ];
 
-        // 🛠️ 強制的にスタイルを書き換える超安全ロジック
+        // 🛠️ IDのズレを修正し、絶対にエラーで止まらないように書き換え
         window.globalSwitchTab = function(tabId) {
-            document.getElementById('tab-input').style.display = 'none';
-            document.getElementById('tab-dashboard').style.display = 'none';
-            document.getElementById('tab-settings').style.display = 'none';
-            document.getElementById('tab-data').style.display = 'none';
+            const contents = ['tab-input', 'tab-dashboard', 'tab-settings', 'tab-data'];
+            contents.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.remove('active');
+            });
             
-            const target = document.getElementById(tabId);
-            if(target) target.style.display = 'block';
+            const targetContent = document.getElementById(tabId);
+            if (targetContent) targetContent.classList.add('active');
             
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            const activeBtn = document.getElementById('btn-' + tabId);
-            if(activeBtn) activeBtn.classList.add('active');
+            
+            const targetBtn = document.getElementById('btn-' + tabId) || document.getElementById('btn-tab-' + tabId);
+            if (targetBtn) targetBtn.classList.add('active');
 
             window.scrollTo({ top: 0 });
         };
@@ -559,4 +564,182 @@
             container.innerHTML = '';
 
             if(!currentVehicleId || displayRecords.length === 0) {
-                container.innerHTML = '<p style="text-align:center; color:#94a3b8; padding:
+                container.innerHTML = '<p style="text-align:center; color:#94a3b8; padding:20px;">データがありません</p>';
+                document.getElementById('avg-fuel').innerHTML = `- <span style="font-size:0.8rem">km/L</span>`;
+                document.getElementById('total-distance').innerHTML = `- <span style="font-size:0.8rem">km</span>`;
+                document.getElementById('graph-bar').style.width = '0%';
+                return;
+            }
+
+            displayRecords.forEach((rec) => {
+                let fuelEfficiencyText = rec.calcEfficiency ? `【 ${rec.calcEfficiency} km/L 】` : '';
+                let displayPrice = rec.price ? `${rec.price}円` : '- 円';
+                if(rec.unitPrice && rec.liters) displayPrice = `${Math.round(rec.liters * rec.unitPrice)}円 (${rec.unitPrice}円/L)`;
+
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                
+                item.innerHTML = `
+                    <div class="history-left-side">
+                        <span class="history-date">${rec.date || '日付未入力'}</span><br>
+                        <span style="font-size:0.75rem; color:#64748b;">総距離: ${rec.odo || 0}km / 給油: ${rec.liters || 0}L</span>
+                    </div>
+                    <div class="history-right-side">
+                        <span style="color:#10b981;">${fuelEfficiencyText}</span><br>
+                        <span style="font-size:0.8rem;">${displayPrice}</span>
+                    </div>
+                    <div class="vehicle-action-buttons">
+                        <button class="btn-sm-secondary" style="background-color:#f59e0b;" onclick="startEditRecord('${rec.timestamp}')">編集</button>
+                        <button class="btn-sm-danger" onclick="deleteRecord('${rec.timestamp}')">削除</button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+
+            const validOdoRecord = displayRecords.find(r => r.odo);
+            document.getElementById('total-distance').innerHTML = `${validOdoRecord ? validOdoRecord.odo : '-'} <span style="font-size:0.8rem">km</span>`;
+
+            if(validOdoRecord && filteredRecords.filter(r => r.odo && r.liters).length >= 1) {
+                const latestOdo = validOdoRecord.odo;
+                const totalDiffKm = latestOdo - baseOdo;
+                const totalLiters = filteredRecords.filter(r => r.odo && r.liters).reduce((sum, r) => sum + Number(r.liters), 0);
+
+                if(totalLiters > 0 && totalDiffKm > 0) {
+                    const totalAvg = (totalDiffKm / totalLiters).toFixed(2);
+                    document.getElementById('avg-fuel').innerHTML = `${totalAvg} <span style="font-size:0.8rem">km/L</span>`;
+                    const maxBenchmark = currentVehicleTheme === 'bike' ? 60 : 20; 
+                    const graphPercent = Math.min((totalAvg / maxBenchmark) * 100, 100);
+                    document.getElementById('graph-bar').style.width = `${graphPercent}%`;
+                } else {
+                    document.getElementById('avg-fuel').innerHTML = `計算中...`;
+                }
+            } else {
+                document.getElementById('avg-fuel').innerHTML = `- <span style="font-size:0.8rem">km/L</span>`;
+            }
+        }
+
+        function saveNewRecord(event) {
+            event.preventDefault();
+
+            if(!currentVehicleId) {
+                alert('車両が選択されていません。');
+                return;
+            }
+
+            const date = document.getElementById('date').value;
+            const odoInput = document.getElementById('odo').value;
+            const litersInput = document.getElementById('liters').value;
+            const unitPriceInput = document.getElementById('unit-price').value;
+
+            if (!date || !odoInput || !litersInput || !unitPriceInput) {
+                if (!confirm("⚠️ 入力内容に空欄（不完全な項目）があります。\n\nこのまま不完全な状態で保存してもよろしいですか？")) {
+                    return;
+                }
+            }
+
+            const odo = odoInput ? parseFloat(odoInput) : "";
+            const liters = litersInput ? parseFloat(litersInput) : "";
+            const unitPrice = unitPriceInput ? parseFloat(unitPriceInput) : "";
+            const calculatedPrice = (liters && unitPrice) ? Math.round(liters * unitPrice) : "";
+
+            if (odo !== "") {
+                const allRecords = JSON.parse(localStorage.getItem('fuel_records')) || [];
+                const currentVehicle = vehicles.find(v => v.id === currentVehicleId);
+                
+                let latestOdo = currentVehicle ? currentVehicle.baseOdo : 0;
+
+                const filteredRecords = allRecords.filter(r => r.vehicle === currentVehicleId && r.odo);
+                if (filteredRecords.length > 0) {
+                    const maxOdoFromRecords = Math.max(...filteredRecords.map(r => r.odo));
+                    if (maxOdoFromRecords > latestOdo) {
+                        latestOdo = maxOdoFromRecords;
+                    }
+                }
+
+                if (odo < latestOdo) {
+                    const confirmMsg = `⚠️ 入力された総走行距離 (${odo} km) が、前回の記録・または初期距離 (${latestOdo} km) より少なくなっています。\n\nメーターの打ち間違いではありませんか？\nこのまま保存する場合は「OK」を押してください。`;
+                    if (!confirm(confirmMsg)) {
+                        return; 
+                    }
+                }
+            }
+
+            let allRecords = JSON.parse(localStorage.getItem('fuel_records')) || [];
+            const uniqueId = Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+
+            allRecords.push({
+                timestamp: uniqueId, 
+                vehicle: currentVehicleId, 
+                date: date || new Date().toISOString().split('T')[0], 
+                odo: odo,
+                liters: liters,
+                unitPrice: unitPrice, 
+                price: calculatedPrice 
+            });
+
+            localStorage.setItem('fuel_records', JSON.stringify(allRecords));
+            
+            document.getElementById('odo').value = '';
+            document.getElementById('liters').value = '';
+            document.getElementById('unit-price').value = '';
+            setDefaultDate();
+            calculateTotalCost('new');
+
+            alert(`記録を保存しました！`);
+            refreshDisplay();
+        }
+
+        function saveEditedRecord(event) {
+            event.preventDefault();
+
+            const editTimestamp = document.getElementById('edit-timestamp-hidden').value;
+            const date = document.getElementById('edit-date').value;
+            const odoInput = document.getElementById('edit-odo').value;
+            const litersInput = document.getElementById('edit-liters').value;
+            const unitPriceInput = document.getElementById('edit-unit-price').value;
+
+            if (!editTimestamp) return;
+
+            if (!date || !odoInput || !litersInput || !unitPriceInput) {
+                if (!confirm("⚠️ 修正内容に空欄があります。\n\nこのまま不完全な状態で上書き保存してもよろしいですか？")) {
+                    return;
+                }
+            }
+
+            const odo = odoInput ? parseFloat(odoInput) : "";
+            const liters = litersInput ? parseFloat(litersInput) : "";
+            const unitPrice = unitPriceInput ? parseFloat(unitPriceInput) : "";
+            const calculatedPrice = (liters && unitPrice) ? Math.round(liters * unitPrice) : "";
+
+            let allRecords = JSON.parse(localStorage.getItem('fuel_records')) || [];
+
+            allRecords = allRecords.map(r => {
+                if (String(r.timestamp) === String(editTimestamp)) {
+                    return {
+                        ...r, 
+                        date: date,
+                        odo: odo,
+                        liters: liters,
+                        unitPrice: unitPrice,
+                        price: calculatedPrice
+                    };
+                }
+                return r; 
+            });
+
+            localStorage.setItem('fuel_records', JSON.stringify(allRecords));
+            closeInlineEdit(); 
+            refreshDisplay();  
+            alert('給油記録を修正しました！');
+        }
+
+        function clearAllData() {
+            if(confirm('本当にすべて初期化しますか？')) {
+                localStorage.removeItem('fuel_records');
+                localStorage.removeItem('vehicles_list');
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
