@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>燃費・給油記録管理マネージャー Pro</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --bike-color: #10b981; 
+            --car-color: #3b82f6;  
+            --border-color: #e5e7eb;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding-bottom: 20px;
+        }
+
+        header {
+            background-color: #1e293b;
+            color: white;
+            padding: 10px 10px 0 10px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .vehicle-switcher-container {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #334155;
+        }
+        .vehicle-switcher-container::-webkit-scrollbar { display: none; }
+
+        .switcher-btn {
+            background-color: #334155;
+            border: none;
+            color: #94a3b8;
+            padding: 6px 14px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            border-radius: 20px;
+            cursor: pointer;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .switcher-btn.active[data-theme="bike"] { background-color: var(--bike-color); color: white; }
+        .switcher-btn.active[data-theme="car"] { background-color: var(--car-color); color: white; }
+
+        .tab-bar-top {
+            display: flex;
+            justify-content: space-around;
+        }
+        .tab-btn {
+            flex: 1;
+            background: none;
+            border: none;
+            padding: 10px 4px;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            cursor: pointer;
+            text-align: center;
+            font-weight: bold;
+            border-bottom: 3px solid transparent;
+        }
+        body.theme-bike .tab-btn.active { color: #ffffff; border-bottom-color: var(--bike-color); }
+        body.theme-car .tab-btn.active { color: #ffffff; border-bottom-color: var(--car-color); }
+
+        main {
+            max-width: 600px;
+            margin: 15px auto;
+            padding: 0 15px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            margin-bottom: 15px;
+        }
+
+        .card.edit-mode-box {
+            border: 3px solid #f59e0b;
+            background-color: #fffbeb;
+        }
+
+        h2 {
+            font-size: 1.05rem;
+            margin-bottom: 15px;
+            border-left: 4px solid #64748b;
+            padding-left: 8px;
+        }
+        body.theme-bike h2 { border-left-color: var(--bike-color); }
+        body.theme-car h2 { border-left-color: var(--car-color); }
+
+        /* 初期表示はJavaScript側で制御するため一括設定 */
+        .tab-content { display: none; }
+
+        .form-group { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 4px; font-size: 0.85rem; font-weight: bold; }
+        input, select { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 1rem; background: white; }
+        
+        .calc-result-box {
+            background-color: #f8fafc;
+            border: 1px dashed #cbd5e1;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 5px;
+            font-weight: bold;
+            font-size: 0.95rem;
+            color: #475569;
+        }
+
+        button.btn-submit { width: 100%; padding: 12px; border: none; border-radius: 6px; color: white; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        body.theme-bike .btn-submit { background-color: var(--bike-color); }
+        body.theme-car .btn-submit { background-color: var(--car-color); }
+
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-box { background-color: #f8fafc; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color); }
+        .stat-value { font-size: 1.3rem; font-weight: bold; margin-top: 4px; }
+
+        .graph-container { background: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid var(--border-color); }
+        .graph-bar-bg { background: #e2e8f0; height: 16px; border-radius: 8px; overflow: hidden; margin-top: 6px; }
+        .graph-bar-fill { height: 100%; width: 0%; transition: width 0.5s ease; }
+        body.theme-bike .graph-bar-fill { background-color: var(--bike-color); }
+        body.theme-car .graph-bar-fill { background-color: var(--car-color); }
+
+        .history-list { max-height: 350px; overflow-y: auto; }
+        .history-item { padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; gap: 10px; }
+        .history-left-side { flex: 1; }
+        .history-right-side { text-align: right; font-weight: bold; margin-right: 5px; }
+        .history-date { font-weight: bold; color: #64748b; }
+
+        .vehicle-manager-list { margin-top: 10px; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
+        .vehicle-manager-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #f8fafc; border-bottom: 1px solid var(--border-color); gap: 10px; }
+        .vehicle-manager-item:last-child { border-bottom: none; }
+        .vehicle-info-text { flex: 1; }
+        .vehicle-action-buttons { display: flex; gap: 5px; }
+        
+        .btn-sm-danger { background-color: #ef4444; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: bold; }
+        .btn-sm-secondary { background-color: #64748b; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: bold; }
+        .btn-danger { background-color: #ef4444; color: white; padding: 10px; border: none; border-radius: 6px; cursor: pointer; width: 100%; }
+    </style>
+</head>
+<body class="theme-bike">
+
+    <header>
+        <div class="vehicle-switcher-container" id="vehicle-buttons-area"></div>
+        <nav class="tab-bar-top">
+            <button id="btn-tab-input" class="tab-btn active" onclick="globalSwitchTab('tab-input')">✍️ 記録入力</button>
+            <button id="btn-tab-dashboard" class="tab-btn" onclick="globalSwitchTab('tab-dashboard')">📊 燃費</button>
+            <button id="btn-tab-settings" class="tab-btn" onclick="globalSwitchTab('tab-settings')">⚙️ 車両設定</button>
+            <button id="btn-tab-data" class="tab-btn" onclick="globalSwitchTab('tab-data')">💾 データ管理</button>
+        </nav>
+    </header>
+
+    <main>
+        <div id="tab-input" class="tab-content" style="display: block;">
+            <div class="card">
+                <h2 id="input-title">給油記録の入力</h2>
+                <form id="fuel-form" onsubmit="saveNewRecord(event)">
+                    <div class="form-group">
+                        <label>給油日</label>
+                        <input type="date" id="date" onchange="calculateTotalCost('new')">
+                    </div>
+                    <div class="form-group">
+                        <label>現在の総走行距離 (km)</label>
+                        <input type="number" id="odo" step="0.1" placeholder="例: 12500.5">
+                    </div>
+                    <div class="form-group">
+                        <label>給油量 (L)</label>
+                        <input type="number" id="liters" step="0.01" placeholder="例: 10.5" oninput="calculateTotalCost('new')">
+                    </div>
+                    <div class="form-group">
+                        <label>ガソリン単価 (円/L)</label>
+                        <input type="number" id="unit-price" placeholder="例: 175" oninput="calculateTotalCost('new')">
+                        <div class="calc-result-box" id="calc-total-cost">合計金額: 0 円</div>
+                    </div>
+                    <button type="submit" class="btn-submit">記録を保存する</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="tab-dashboard" class="tab-content">
+            <div class="card edit-mode-box" id="inline-edit-card" style="display: none;">
+                <h2 style="border-left-color: #f59e0b; color: #b45309;">🔧 選択した給油履歴の修正</h2>
+                <form id="inline-edit-form" onsubmit="saveEditedRecord(event)">
+                    <input type="hidden" id="edit-timestamp-hidden">
+                    <div class="form-group">
+                        <label>給油日</label>
+                        <input type="date" id="edit-date" onchange="calculateTotalCost('edit')">
+                    </div>
+                    <div class="form-group">
+                        <label>総走行距離 (km)</label>
+                        <input type="number" id="edit-odo" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>給油量 (L)</label>
+                        <input type="number" id="edit-liters" step="0.01" oninput="calculateTotalCost('edit')">
+                    </div>
+                    <div class="form-group">
+                        <label>ガソリン単価 (円/L)</label>
+                        <input type="number" id="edit-unit-price" oninput="calculateTotalCost('edit')">
+                        <div class="calc-result-box" id="edit-calc-total-cost" style="background:#fff; border-color:#f59e0b;">合計金額: 0 円</div>
+                    </div>
+                    <button type="submit" class="btn-submit" style="background-color:#f59e0b;">🔧 修正内容を確定して上書き保存</button>
+                    <button type="button" class="btn-danger" style="background-color:#64748b; margin-top:8px;" onclick="closeInlineEdit()">修正を取り消す（閉じる）</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2 id="dash-title">ダッシュボード</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <label>平均燃費</label>
+                        <div class="stat-value" id="avg-fuel">- <span style="font-size:0.8rem">km/L</span></div>
+                    </div>
+                    <div class="stat-box">
+                        <label>総走行距離</label>
+                        <div class="stat-value" id="total-distance">- <span style="font-size:0.8rem">km</span></div>
+                    </div>
+                </div>
+                <div class="graph-container">
+                    <label>燃費ステータス</label>
+                    <div class="graph-bar-bg">
+                        <div id="graph-bar" class="graph-bar-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 id="history-title">履歴一覧</h2>
+                <div class="history-list" id="history-container"></div>
+            </div>
+        </div>
+
+        <div id="tab-settings" class="tab-content">
+            <div class="card">
+                <h2>車両設定の確認</h2>
+                <div class="form-group">
+                    <label>現在選択中の車両</label>
+                    <input type="text" id="settings-current-vehicle" readonly style="background:#e2e8f0;">
+                </div>
+                <div class="form-group">
+                    <label>この車両の油種設定</label>
+                    <select id="fuel-type" onchange="saveFuelTypeSetting()">
+                        <option value="premium">ハイオク</option>
+                        <option value="regular">レギュラー</option>
+                        <option value="diesel">軽油</option>
+                    </select>
+                </div>
+                <h3 style="font-size:0.9rem; margin:15px 0 5px 0;">登録されているすべての車両一覧</h3>
+                <div class="vehicle-manager-list" id="vehicle-list-manager"></div>
+            </div>
+
+            <div class="card">
+                <h2>🏍️ バイクの新規追加登録</h2>
+                <div class="form-group">
+                    <label>追加するバイクの名前</label>
+                    <input type="text" id="new-bike-name" placeholder="例: カブ110, Ninja250">
+                </div>
+                <div class="form-group">
+                    <label>登録時の初期総走行距離 (km)</label>
+                    <input type="number" id="new-bike-base-odo" step="0.1" placeholder="例: 5000" value="0">
+                </div>
+                <button type="button" class="btn-submit" onclick="addNewVehicle('bike')">新しいバイクを追加</button>
+            </div>
+
+            <div class="card">
+                <h2>🚗 自動車の新規追加登録</h2>
+                <div class="form-group">
+                    <label>追加する自動車の名前</label>
+                    <input type="text" id="new-car-name" placeholder="例: プリウス, フィット">
+                </div>
+                <div class="form-group">
+                    <label>登録時の初期総走行距離 (km)</label>
+                    <input type="number" id="new-car-base-odo" step="0.1" placeholder="例: 25000" value="0">
+                </div>
+                <button type="button" class="btn-submit" onclick="addNewVehicle('car')">新しい自動車を追加</button>
+            </div>
+        </div>
+
+        <div id="tab-data" class="tab-content">
+            <div class="card">
+                <h2>データ管理</h2>
+                <p style="font-size: 0.85rem; margin-bottom: 15px; color:#64748b;">
+                    ブラウザ内の全データを一括削除します。これまでのすべての給油記録と追加した車両データがリセットされます。
+                </p>
+                <button class="btn-danger" onclick="clearAllData()">⚠️ すべてのデータを削除（初期化）</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let currentVehicleId = 'bike'; 
+        let currentVehicleTheme = 'bike';
+
+        let vehicles = JSON.parse(localStorage.getItem('vehicles_list')) || [
+            { id: 'bike', name: 'バイク (初期)', type: 'bike', fuel: 'premium', baseOdo: 0 },
+            { id: 'car', name: '自動車', type: 'car', fuel: 'regular', baseOdo: 0 }
+        ];
+
+        // 🛠️ 強制的にスタイルを書き換える超安全ロジック
+        window.globalSwitchTab = function(tabId) {
+            document.getElementById('tab-input').style.display = 'none';
+            document.getElementById('tab-dashboard').style.display = 'none';
+            document.getElementById('tab-settings').style.display = 'none';
+            document.getElementById('tab-data').style.display = 'none';
+            
+            const target = document.getElementById(tabId);
+            if(target) target.style.display = 'block';
+            
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const activeBtn = document.getElementById('btn-' + tabId);
+            if(activeBtn) activeBtn.classList.add('active');
+
+            window.scrollTo({ top: 0 });
+        };
+
+        window.onload = function() {
+            setDefaultDate();
+            if (!vehicles.find(v => v.id === currentVehicleId) && vehicles.length > 0) {
+                currentVehicleId = vehicles[0].id;
+                currentVehicleTheme = vehicles[0].type;
+            }
+            renderVehicleButtons();
+            refreshDisplay();
+        };
+
+        function setDefaultDate() {
+            const dateInput = document.getElementById('date');
+            if(dateInput && !dateInput.value) {
+                dateInput.value = new Date().toISOString().split('T')[0];
+            }
+        }
+
+        function calculateTotalCost(mode) {
+            if(mode === 'new') {
+                const liters = parseFloat(document.getElementById('liters').value) || 0;
+                const unitPrice = parseFloat(document.getElementById('unit-price').value) || 0;
+                document.getElementById('calc-total-cost').innerText = `合計金額: ${Math.round(liters * unitPrice).toLocaleString()} 円`;
+            } else {
+                const liters = parseFloat(document.getElementById('edit-liters').value) || 0;
+                const unitPrice = parseFloat(document.getElementById('edit-unit-price').value) || 0;
+                document.getElementById('edit-calc-total-cost').innerText = `合計金額: ${Math.round(liters * unitPrice).toLocaleString()} 円`;
+            }
+        }
+
+        function renderVehicleButtons() {
+            const area = document.getElementById('vehicle-buttons-area');
+            area.innerHTML = '';
+            if (vehicles.length === 0) return;
+
+            vehicles.forEach(v => {
+                const btn = document.createElement('button');
+                btn.className = `switcher-btn ${v.id === currentVehicleId ? 'active' : ''}`;
+                btn.innerHTML = `${v.type === 'bike' ? '🏍️' : '🚗'} ${v.name}`;
+                btn.onclick = function() { switchVehicle(v.id); };
+                area.appendChild(btn);
+            });
+        }
+
+        function switchVehicle(id) {
+            currentVehicleId = id;
+            const vehicle = vehicles.find(v => v.id === id);
+            if(!vehicle) return;
+            currentVehicleTheme = vehicle.type;
+
+            document.body.className = `theme-${vehicle.type}`;
+            document.getElementById('input-title').innerText = `給油記録の入力 (${vehicle.name})`;
+            document.getElementById('dash-title').innerText = `燃費ダッシュボード (${vehicle.name})`;
+            document.getElementById('history-title').innerText = `履歴一覧 (${vehicle.name})`;
+            document.getElementById('fuel-type').value = vehicle.fuel || (vehicle.type === 'bike' ? 'premium' : 'regular');
+
+            closeInlineEdit();
+            renderVehicleButtons();
+            refreshDisplay();
+        }
+
+        function addNewVehicle(type) {
+            let nameInput, odoInput, defaultFuel;
+            if (type === 'bike') {
+                nameInput = document.getElementById('new-bike-name');
+                odoInput = document.getElementById('new-bike-base-odo');
+                defaultFuel = 'premium';
+            } else {
+                nameInput = document.getElementById('new-car-name');
+                odoInput = document.getElementById('new-car-base-odo');
+                defaultFuel = 'regular';
+            }
+
+            const name = nameInput.value.trim();
+            const baseOdo = parseFloat(odoInput.value) || 0;
+            if(!name) { alert('名前を入力してください'); return; }
+
+            const newId = type + '_' + Date.now(); 
+            vehicles.push({ id: newId, name: name, type: type, fuel: defaultFuel, baseOdo: baseOdo });
+            localStorage.setItem('vehicles_list', JSON.stringify(vehicles));
+            
+            nameInput.value = '';
+            odoInput.value = '0';
+            alert(`「${name}」を追加しました！`);
+            switchVehicle(newId);
+        }
+
+        function deleteVehicle(id) {
+            const vehicle = vehicles.find(v => v.id === id);
+            if(!vehicle) return;
+            if(!confirm(`車両「${vehicle.name}」を削除しますか？`)) return;
+
+            vehicles = vehicles.filter(v => v.id !== id);
+            localStorage.setItem('vehicles_list', JSON.stringify(vehicles));
+
+            let allRecords = JSON.parse(localStorage.getItem('fuel_records')) || [];
+            allRecords = allRecords.filter(r => r.vehicle !== id);
+            localStorage.setItem('fuel_records', JSON.stringify(allRecords));
+
+            if(currentVehicleId === id) {
+                if(vehicles.length > 0) switchVehicle(vehicles[0].id);
+            } else {
+                renderVehicleButtons();
+                refreshDisplay();
+            }
+        }
+
+        window.renameVehicle = function(id) {
+            const vehicle = vehicles.find(v => v.id === id);
+            if(!vehicle) return;
+
+            const newName = prompt(`新しい車種名：`, vehicle.name);
+            if(newName === null) return;
+            const trimmed = newName.trim();
+            if(!trimmed) return;
+
+            const newOdoStr = prompt(`初期総走行距離 (km)：`, vehicle.baseOdo);
+            if(newOdoStr === null) return;
+
+            vehicle.name = trimmed;
+            vehicle.baseOdo = parseFloat(newOdoStr) || 0;
+            localStorage.setItem('vehicles_list', JSON.stringify(vehicles));
+            
+            if(currentVehicleId === id) switchVehicle(id);
+            else { renderVehicleButtons(); refreshDisplay(); }
+        };
+
+        window.startEditRecord = function(timestamp) {
+            const allRecords = JSON.parse(localStorage.getItem('fuel_records')) || [];
+            const record = allRecords.find(r => String(r.timestamp) === String(timestamp));
+            if(!record) {
+                alert('対象データが見つかりません。');
+                return;
+            }
+
+            document.getElementById('edit-timestamp-hidden').value = String(record.timestamp);
+            document.getElementById('edit-date').value = record.date || '';
+            document.getElementById('edit-odo').value = record.odo !== undefined ? record.odo : '';
+            document.getElementById('edit-liters').value = record.liters !== undefined ? record.liters : '';
+            document.getElementById('edit-unit-price').value = record.unitPrice !== undefined ? record.unitPrice : '';
+            
+            calculateTotalCost('edit');
+
+            const editCard = document.getElementById('inline-edit-card');
+            editCard.style.display = 'block';
+            editCard.scrollIntoView({ behavior: 'smooth' });
+        };
+
+        window.closeInlineEdit = function() {
+            document.getElementById('edit-timestamp-hidden').value = '';
+            const editCard = document.getElementById('inline-edit-card');
+            if (editCard) editCard.style.display = 'none';
+        };
+
+        window.deleteRecord = function(timestamp) {
+            if(!confirm('この履歴を削除しますか？')) return;
+            let allRecords = JSON.parse(localStorage.getItem('fuel_records')) || [];
+            allRecords = allRecords.filter(r => String(r.timestamp) !== String(timestamp));
+            localStorage.setItem('fuel_records', JSON.stringify(allRecords));
+            
+            if(document.getElementById('edit-timestamp-hidden').value === String(timestamp)) {
+                closeInlineEdit();
+            }
+            refreshDisplay();
+        };
+
+        function saveFuelTypeSetting() {
+            const v = vehicles.find(v => v.id === currentVehicleId);
+            if(v) {
+                v.fuel = document.getElementById('fuel-type').value;
+                localStorage.setItem('vehicles_list', JSON.stringify(vehicles));
+                alert('油種設定を保存しました。');
+            }
+        }
+
+        function refreshDisplay() {
+            const allRecords = JSON.parse(localStorage.getItem('fuel_records')) || [];
+            const currentVehicle = vehicles.find(v => v.id === currentVehicleId);
+            const baseOdo = currentVehicle ? currentVehicle.baseOdo : 0;
+
+            const filteredRecords = allRecords
+                .filter(r => r.vehicle === currentVehicleId)
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            document.getElementById('settings-current-vehicle').value = currentVehicle ? `${currentVehicle.type === 'bike'?'🏍️':'🚗'} ${currentVehicle.name}` : '未選択';
+
+            const managerList = document.getElementById('vehicle-list-manager');
+            managerList.innerHTML = '';
+            vehicles.forEach(v => {
+                const item = document.createElement('div');
+                item.className = 'vehicle-manager-item';
+                let fuelLabel = v.fuel === 'premium' ? 'ハイオク' : (v.fuel === 'diesel' ? '軽油' : 'レギュラー');
+                item.innerHTML = `
+                    <div class="vehicle-info-text">
+                        <strong>${v.type === 'bike' ? '🏍️' : '🚗'} ${v.name}</strong><br>
+                        <span style="font-size:0.75rem; color:#64748b;">初期距離: ${v.baseOdo}km / 油種: ${fuelLabel}</span>
+                    </div>
+                    <div class="vehicle-action-buttons">
+                        <button class="btn-sm-secondary" onclick="renameVehicle('${v.id}')">設定変更</button>
+                        <button class="btn-sm-danger" onclick="deleteVehicle('${v.id}')">削除</button>
+                    </div>
+                `;
+                managerList.appendChild(item);
+            });
+
+            for(let i = 0; i < filteredRecords.length; i++) {
+                let prevOdo = baseOdo;
+                for(let j = i - 1; j >= 0; j--) {
+                    if(filteredRecords[j].odo) {
+                        prevOdo = filteredRecords[j].odo;
+                        break;
+                    }
+                }
+                if(filteredRecords[i].odo && filteredRecords[i].liters && (filteredRecords[i].odo - prevOdo > 0)) {
+                    filteredRecords[i].calcEfficiency = ((filteredRecords[i].odo - prevOdo) / filteredRecords[i].liters).toFixed(2);
+                } else {
+                    filteredRecords[i].calcEfficiency = null;
+                }
+            }
+
+            const displayRecords = [...filteredRecords].reverse();
+            const container = document.getElementById('history-container');
+            container.innerHTML = '';
+
+            if(!currentVehicleId || displayRecords.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:#94a3b8; padding:
